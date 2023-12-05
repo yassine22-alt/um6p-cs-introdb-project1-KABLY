@@ -1,4 +1,5 @@
 -- Create database
+drop database IF exists gym ;
 CREATE DATABASE gym;
 
 -- Use the gym database
@@ -7,7 +8,7 @@ USE gym;
 -- Create Employee table
 CREATE TABLE Employee (
     employee_id SMALLINT UNSIGNED AUTO_INCREMENT,
-    name VARCHAR(20) NOT NULL,
+    e_name VARCHAR(20) NOT NULL,
     salary INT UNSIGNED,
     contact VARCHAR(25),
     first_day_work DATE,
@@ -16,11 +17,11 @@ CREATE TABLE Employee (
 
 -- Create Customer table
 CREATE TABLE Customer (
-    customer_id SMALLINT UNSIGNED,
-    name VARCHAR(25) NOT NULL,
+    customer_id SMALLINT UNSIGNED auto_increment,
+    c_name VARCHAR(50) NOT NULL,
     registration_date DATE,
-    birth_date DATE,
-    contact VARCHAR(15) NOT NULL,
+    birth_date DATE NOT NULL,
+    contact VARCHAR(50) ,
     PRIMARY KEY (customer_id)
 );
 
@@ -52,7 +53,7 @@ CREATE TABLE Office (
 );
 
 -- Create Admin table
-CREATE TABLE Admin (
+CREATE TABLE E_admin (
     employee_id SMALLINT UNSIGNED,
     space_id SMALLINT UNSIGNED,
     FOREIGN KEY (employee_id) REFERENCES Employee(employee_id) ON DELETE CASCADE,
@@ -67,33 +68,35 @@ CREATE TABLE Feedback (
     customer_id SMALLINT UNSIGNED,
     admin_id SMALLINT UNSIGNED,
     PRIMARY KEY (feedback_id),
-    FOREIGN KEY (admin_id) REFERENCES Admin(employee_id) ON DELETE SET NULL,
+    FOREIGN KEY (admin_id) REFERENCES E_admin(employee_id) ON DELETE SET NULL,
     FOREIGN KEY (customer_id) REFERENCES Customer(customer_id) ON DELETE SET NULL
 );
 
 -- Create End_time_founder table
 CREATE TABLE End_time_founder (
+	s_day VARCHAR(10),
     start_time TIME,
     end_time TIME,
-    day VARCHAR(10),
-    PRIMARY KEY (start_time, day),
-    CHECK (end_time > start_time)
+    PRIMARY KEY (start_time, s_day),
+    CHECK (end_time > start_time),
+	CHECK (LOWER(s_day) IN ('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'))
 );
 
 -- Create Min_age_founder table
 CREATE TABLE Min_age_founder (
-    name VARCHAR(25),
+    d_name VARCHAR(25),
     minimum_age SMALLINT UNSIGNED,
-    PRIMARY KEY (name)
+    PRIMARY KEY (d_name)
 );
 
 -- Create Discipline table
 CREATE TABLE Discipline (
-    discipline_id SMALLINT UNSIGNED,
+    discipline_id SMALLINT UNSIGNED auto_increment,
     price SMALLINT UNSIGNED,
-    name VARCHAR(25),
+    d_name VARCHAR(25),
     PRIMARY KEY (discipline_id),
-    FOREIGN KEY (name) REFERENCES Min_age_founder(name) ON DELETE CASCADE
+    FOREIGN KEY (d_name) REFERENCES Min_age_founder(d_name) 
+    ON DELETE CASCADE
 );
 
 -- Create Training_space table
@@ -103,17 +106,17 @@ CREATE TABLE Training_space (
 );
 
 -- Create Session table
-CREATE TABLE Session (
+CREATE TABLE S_session (
     session_id SMALLINT UNSIGNED AUTO_INCREMENT,
     start_time TIME,
-    day VARCHAR(10),
+    s_day VARCHAR(10),
     discipline_id SMALLINT UNSIGNED,
     space_id SMALLINT UNSIGNED,
     PRIMARY KEY (session_id, space_id),
-    FOREIGN KEY (start_time, day) REFERENCES End_time_founder(start_time, day) ON DELETE RESTRICT,
+    FOREIGN KEY (start_time, s_day) REFERENCES End_time_founder(start_time, s_day) ON DELETE RESTRICT,
     FOREIGN KEY (discipline_id) REFERENCES Discipline(discipline_id) ON DELETE CASCADE,
     FOREIGN KEY (space_id) REFERENCES Training_space(space_id) ON DELETE CASCADE,
-    CONSTRAINT check_day_attribute CHECK (LOWER(day) IN ('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'))
+    CONSTRAINT check_day_attribute CHECK (LOWER(s_day) IN ('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'))
 );
 
 -- Create Pricefounder table
@@ -141,16 +144,19 @@ CREATE TABLE Locker_room (
 );
 
 -- Create Subscribed table
-CREATE TABLE Subscribed(
-    payment_id SMALLINT UNSIGNED,
-    type_of_payment ENUM ('cash', 'credit card', 'debit card', 'check'),
-    date_of_payment DATE,
-    customer_id SMALLINT UNSIGNED,
-    membership_id SMALLINT UNSIGNED,
-    PRIMARY KEY (customer_id),
-    FOREIGN KEY (membership_id) REFERENCES Membership(membership_id) ON DELETE RESTRICT,
-    FOREIGN KEY (customer_id) REFERENCES Customer(customer_id) ON DELETE CASCADE
-);
+CREATE TABLE Subscribed( 
+	payment_id SMALLINT UNSIGNED, 
+	type_of_payment VARCHAR(20), 
+   	date_of_payment DATE , 
+	customer_id SMALLINT UNSIGNED , 
+	membership_id SMALLINT UNSIGNED , 
+	PRIMARY KEY (payment_id,customer_id) , 
+	FOREIGN KEY (membership_id) REFERENCES Membership(membership_id) 
+		ON DELETE RESTRICT, 
+	FOREIGN KEY (customer_id) REFERENCES Customer(customer_id) 
+		ON DELETE CASCADE ,
+	CHECK (LOWER(type_of_payment) IN ("cash","credit card","debit card","check"))
+    ) ; 
 
 -- Create Technician table
 CREATE TABLE Technician (
@@ -174,7 +180,7 @@ CREATE TABLE Equipment_type_brand (
 
 -- Create Equipment_barcode table
 CREATE TABLE Equipment_barcode (
-    barcode INT,
+    barcode varchar(15),
     e_type VARCHAR(255),
     brand VARCHAR(255),
     PRIMARY KEY (barcode),
@@ -183,7 +189,7 @@ CREATE TABLE Equipment_barcode (
 
 -- Create Equipment_details table
 CREATE TABLE Equipment_details (
-    barcode INT,
+    barcode varchar(15),
     equipment_id INT,
     last_check_date DATE,
     PRIMARY KEY (barcode, equipment_id),
@@ -219,7 +225,7 @@ CREATE TABLE Checks (
 -- Create Maintains table
 CREATE TABLE Maintains (
     technician_id SMALLINT UNSIGNED,
-    barcode INT,
+    barcode varchar(15),
     equipment_id INT,
     FOREIGN KEY (technician_id) REFERENCES Technician(employee_id) ON DELETE CASCADE,
     FOREIGN KEY (barcode, equipment_id) REFERENCES Equipment_details(barcode, equipment_id) ON DELETE CASCADE);
@@ -254,57 +260,74 @@ END;
 //
 DELIMITER ;
 
--- Create trigger enforce_max_people_membership
+
+-- Create trigger to prevent future dates in customers birthdate 
 DELIMITER //
-CREATE TRIGGER enforce_max_people_membership
-BEFORE INSERT ON Subscribed
+
+CREATE TRIGGER prevent_future_dates_customer_birth_date
+BEFORE INSERT ON customer
 FOR EACH ROW
 BEGIN
-    DECLARE current_people_count INT;
-
-    -- Count the current number of people in the membership
-    SELECT COUNT(*) INTO current_people_count
-    FROM Subscribed
-    WHERE membership_id = NEW.membership_id;
-
-    IF current_people_count >= 5 THEN
+    IF NEW.birth_date > NOW() THEN
         SIGNAL SQLSTATE '45000'
-        SET MESSAGE_TEXT = "Error: Maximum 5 people allowed in a membership";
+        SET MESSAGE_TEXT = 'Cannot insert future dates into the birth_date column of the customer table.';
+    END IF;
+END;
+
+//
+
+DELIMITER ;
+-- Create trigger to prevent future dates in first day of work of customers
+DELIMITER //
+
+CREATE TRIGGER prevent_future_dates_employee_first_day_work
+BEFORE INSERT ON employee
+FOR EACH ROW
+BEGIN
+    IF NEW.first_day_work > NOW() THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Cannot insert future dates into the first_day_work column of the employee table.';
+    END IF;
+END;
+
+//
+
+DELIMITER ;
+
+-- Create trigger to prevent the access to a customer whose age is less than the specified min age 
+-- to a certain membership
+DELIMITER //
+
+CREATE TRIGGER prevent_member_access
+BEFORE INSERT ON Customer
+FOR EACH ROW
+BEGIN
+    DECLARE member_age INT;
+    DECLARE max_discipline_age INT;
+
+    -- Get the age of the member
+    SET member_age = TIMESTAMPDIFF(YEAR, NEW.birth_date, CURDATE());
+
+    -- Get the maximum age requirement among all disciplines associated with the membership
+    SELECT MAX(maf.minimum_age) INTO max_discipline_age
+    FROM has as md
+    JOIN Discipline d ON md.discipline_id = d.discipline_id
+    JOIN Min_age_founder maf ON d.d_name = maf.d_name
+    WHERE md.membership_id IN (SELECT membership_id FROM subscribed WHERE customer_id = NEW.customer_id);
+
+    -- Compare the member's age with the maximum discipline age requirement
+    IF member_age < max_discipline_age THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Member cannot access the membership due to age restrictions.';
     END IF;
 END;
 //
+
 DELIMITER ;
 
--- Create procedure prevent_future_dates_procedure
-DELIMITER //
-CREATE PROCEDURE prevent_future_dates_procedure(tablename VARCHAR(50), columnname VARCHAR(50))
-BEGIN
-    SET @query = CONCAT('
-    CREATE TRIGGER prevent_future_dates_', tablename, '
-    BEFORE INSERT ON ', tablename, '
-    FOR EACH ROW BEGIN
-        IF NEW.', columnname, ' > CURDATE() THEN
-            SIGNAL SQLSTATE ''45000''
-            SET MESSAGE_TEXT = CONCAT(''future dates are not allowed for '', ''', columnname, ''');
-        END IF;
-    END;'
-);
-
-    PREPARE stmt FROM @query;
-    EXECUTE stmt;
-    DEALLOCATE PREPARE stmt;
-END;
-//
-DELIMITER ;
-
--- Call prevent_future_dates_procedure for customer
-CALL prevent_future_dates_procedure('customer', 'birthdate');
--- Call prevent_future_dates_procedure for employee
-CALL prevent_future_dates_procedure('employee', 'hiredate');
--- Call prevent_future_dates_procedure for membership
-CALL prevent_future_dates_procedure('membership', 'start_date');
 
 -- Create indexes
-CREATE INDEX idx_session_start_time_day ON Session (start_time, day);
-CREATE INDEX idx_customer_lex_order ON Customer (name);
-CREATE INDEX idx_employee_lex_order ON Employee (name);
+/**/
+CREATE INDEX idx_session_start_time_day ON S_session (start_time, s_day);
+CREATE INDEX idx_customer_lex_order ON Customer (c_name);
+CREATE INDEX idx_employee_lex_order ON Employee (e_name);
